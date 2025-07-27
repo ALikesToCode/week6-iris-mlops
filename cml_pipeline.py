@@ -15,6 +15,10 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+
+# Configure matplotlib for headless environment
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.datasets import load_iris
