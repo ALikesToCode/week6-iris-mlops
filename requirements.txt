@@ -9,3 +9,5 @@ python-multipart==0.0.6
 mlflow==2.8.1
 optuna==3.4.0
 sqlalchemy==2.0.23
+matplotlib==3.8.2
+seaborn==0.13.0
