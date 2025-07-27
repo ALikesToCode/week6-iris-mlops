@@ -258,8 +258,17 @@ jobs:
         # Clean up old blue deployment
         kubectl delete deployment iris-api -n iris-api --ignore-not-found=true
         
-        # Rename green to blue for next cycle
-        kubectl patch deployment iris-api-green -n iris-api -p '{"metadata":{"name":"iris-api"},"spec":{"selector":{"matchLabels":{"app":"iris-api"}},"template":{"metadata":{"labels":{"app":"iris-api"}}}}}'
+        # Create new blue deployment from green template
+        kubectl get deployment iris-api-green -n iris-api -o yaml | \
+          sed 's/iris-api-green/iris-api/g' | \
+          sed 's/app: iris-api$/app: iris-api/g' | \
+          kubectl apply -f -
+        
+        # Wait for new blue deployment to be ready
+        kubectl rollout status deployment/iris-api -n iris-api --timeout=120s
+        
+        # Clean up green deployment
+        kubectl delete deployment iris-api-green -n iris-api
         
         echo "Blue-Green deployment completed successfully!"
 
