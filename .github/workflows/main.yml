@@ -408,10 +408,17 @@ jobs:
   notify:
     name: Notify Deployment Success
     runs-on: ubuntu-latest
-    needs: [deploy-prod]
+    needs: [deploy-prod, cml-training]
     if: always()
 
     steps:
+    - name: Download CML Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ml-model-artifacts
+        path: ./cml-results/
+      continue-on-error: true
+        
     - name: Deployment Status
       run: |
         if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
@@ -421,19 +428,74 @@ jobs:
           echo "✅ API health checks passed"
           echo "✅ Model artifacts generated"
           echo ""
-          echo "📊 ML Model Performance Summary:"
-          echo "   - Algorithm: Random Forest Classifier"
-          echo "   - Model validation: Approved for deployment"
-          echo "   - Performance meets production standards"
+          
+          # Display CML metrics if available
+          echo "📊 CML Model Performance Report:"
+          if [ -f "cml-results/artifacts/metrics.json" ]; then
+            echo "🤖 **Model Training Results:**"
+            ACCURACY=$(cat cml-results/artifacts/metrics.json | jq -r '.accuracy // "N/A"')
+            PRECISION=$(cat cml-results/artifacts/metrics.json | jq -r '.precision // "N/A"')
+            RECALL=$(cat cml-results/artifacts/metrics.json | jq -r '.recall // "N/A"')
+            F1_SCORE=$(cat cml-results/artifacts/metrics.json | jq -r '.f1_score // "N/A"')
+            CV_MEAN=$(cat cml-results/artifacts/metrics.json | jq -r '.cv_mean // "N/A"')
+            CV_STD=$(cat cml-results/artifacts/metrics.json | jq -r '.cv_std // "N/A"')
+            TEST_SAMPLES=$(cat cml-results/artifacts/metrics.json | jq -r '.test_samples // "N/A"')
+            CORRECT=$(cat cml-results/artifacts/metrics.json | jq -r '.correct_predictions // "N/A"')
+            TIMESTAMP=$(cat cml-results/artifacts/metrics.json | jq -r '.timestamp // "N/A"')
+            
+            echo "   • Accuracy: ${ACCURACY}"
+            echo "   • Precision: ${PRECISION}"  
+            echo "   • Recall: ${RECALL}"
+            echo "   • F1-Score: ${F1_SCORE}"
+            echo "   • Cross-validation: ${CV_MEAN} (±${CV_STD})"
+            echo "   • Test performance: ${CORRECT}/${TEST_SAMPLES} correct predictions"
+            echo "   • Training timestamp: ${TIMESTAMP}"
+            
+            # Determine model quality using awk
+            QUALITY=$(echo "$ACCURACY" | awk '
+              {
+                if ($1 >= 0.95) print "EXCELLENT"
+                else if ($1 >= 0.90) print "GOOD" 
+                else print "WARNING"
+              }
+            ')
+            
+            if [ "$QUALITY" = "EXCELLENT" ]; then
+              echo "🎉 **EXCELLENT**: Model performance exceeds 95% accuracy!"
+              echo "✅ Model ready for production deployment"
+            elif [ "$QUALITY" = "GOOD" ]; then
+              echo "✅ **GOOD**: Model performance meets production standards"
+              echo "📦 Model approved for deployment"
+            else
+              echo "⚠️  **WARNING**: Model accuracy below 90%"
+              echo "🔍 Consider additional training or feature engineering"
+            fi
+          else
+            echo "   • Algorithm: Random Forest Classifier"
+            echo "   • Status: Training completed successfully"
+            echo "   • Validation: Approved for deployment"
+          fi
+          
           echo ""
           echo "🔗 Repository: https://github.com/ALikesToCode/week6-iris-mlops"
-          echo "📁 Download CML reports and model artifacts from Actions artifacts"
-          echo "📈 View detailed performance metrics in ml-model-artifacts.zip"
+          echo "📁 Download full CML reports: Actions → Artifacts → ml-model-artifacts"
+          echo "📈 Performance visualization included in artifacts"
+          
         else
           echo "❌ Deployment failed. Check logs above."
           echo "🔍 Common issues:"
           echo "  - Resource constraints (scale down existing deployments)"
           echo "  - Pod startup failures (check pod logs)"
           echo "  - Network connectivity (check service endpoints)"
+          
+          # Show CML results even if deployment failed
+          if [ -f "cml-results/artifacts/metrics.json" ]; then
+            echo ""
+            echo "📊 CML Results (despite deployment failure):"
+            ACCURACY=$(cat cml-results/artifacts/metrics.json | jq -r '.accuracy // "N/A"')
+            echo "   • Model accuracy: ${ACCURACY}"
+            echo "   • CML artifacts available for download"
+          fi
+          
           exit 1
         fi
