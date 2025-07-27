@@ -128,7 +128,7 @@ jobs:
     - name: Configure kubectl
       run: |
         gcloud container clusters get-credentials iris-api-cluster \
-          --region=${{ env.REGION }} \
+          --zone=asia-south1-a \
           --project=${{ env.PROJECT_ID }}
 
     - name: Deploy to development namespace
@@ -185,7 +185,7 @@ jobs:
     - name: Configure kubectl
       run: |
         gcloud container clusters get-credentials iris-api-cluster \
-          --region=${{ env.REGION }} \
+          --zone=asia-south1-a \
           --project=${{ env.PROJECT_ID }}
 
     - name: Deploy to production using Blue-Green
