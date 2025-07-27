@@ -111,19 +111,36 @@ jobs:
         retention-days: 30
         
     - name: Comment CML Report
-      if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
           if (fs.existsSync('cml_report.md')) {
             const report = fs.readFileSync('cml_report.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: report
-            });
+            
+            // For push events, create a commit comment
+            if (context.eventName === 'push') {
+              await github.rest.repos.createCommitComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha,
+                body: `## 🤖 CML Model Performance Report\n\n${report}`
+              });
+            }
+            
+            // For PR events, create an issue comment
+            if (context.eventName === 'pull_request') {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## 🤖 CML Model Performance Report\n\n${report}`
+              });
+            }
+            
+            console.log('CML report posted successfully!');
+          } else {
+            console.log('No CML report found to post');
           }
 
   # Build and Push Container Image
@@ -286,7 +303,12 @@ jobs:
         
         # Scale down existing blue deployment to make room for green
         echo "Scaling down existing blue deployment to make room for green..."
-        kubectl scale deployment iris-api --replicas=1 -n iris-api --ignore-not-found=true
+        if kubectl get deployment iris-api -n iris-api &> /dev/null; then
+          kubectl scale deployment iris-api --replicas=1 -n iris-api
+          echo "Blue deployment scaled down to 1 replica"
+        else
+          echo "No existing blue deployment found"
+        fi
         
         # Wait a moment for scale down
         sleep 10
@@ -384,7 +406,12 @@ jobs:
       run: |
         # Optional: Clean up old blue deployment after successful green deployment
         echo "Cleaning up old blue deployment..."
-        kubectl scale deployment iris-api --replicas=0 -n iris-api --ignore-not-found=true
+        if kubectl get deployment iris-api -n iris-api &> /dev/null; then
+          kubectl scale deployment iris-api --replicas=0 -n iris-api
+          echo "Blue deployment scaled down to 0 replicas"
+        else
+          echo "No blue deployment to clean up"
+        fi
         
         echo "✅ Blue-Green deployment completed successfully!"
         echo "📊 Current deployment status:"
