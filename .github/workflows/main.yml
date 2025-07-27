@@ -143,8 +143,12 @@ jobs:
       env:
         IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
       run: |
+        # Use only the first tag (main branch tag)
+        SINGLE_TAG=$(echo "${IMAGE_TAG}" | head -n1)
+        echo "Using image tag: $SINGLE_TAG"
+        
         # Update image in deployment
-        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${IMAGE_TAG}|g" k8s/deployment.yaml
+        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${SINGLE_TAG}|g" k8s/deployment.yaml
         
         # Apply to development namespace
         kubectl create namespace development --dry-run=client -o yaml | kubectl apply -f -
@@ -209,8 +213,12 @@ jobs:
       env:
         IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
       run: |
+        # Use only the first tag (main branch tag)
+        SINGLE_TAG=$(echo "${IMAGE_TAG}" | head -n1)
+        echo "Using image tag: $SINGLE_TAG"
+        
         # Update image in deployment
-        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${IMAGE_TAG}|g" k8s/deployment.yaml
+        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${SINGLE_TAG}|g" k8s/deployment.yaml
         
         # Deploy as green (challenger)
         sed -i 's/app: iris-api$/app: iris-api-green/g' k8s/deployment.yaml
