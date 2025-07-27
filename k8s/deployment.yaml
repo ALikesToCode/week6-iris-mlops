@@ -37,10 +37,27 @@ spec:
         env:
         - name: PORT
           value: "8000"
+        - name: API_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: API_VERSION
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: LOG_LEVEL
+        - name: MODEL_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MODEL_PATH
+        - name: DATA_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: DATA_PATH
         volumeMounts:
-        - name: app-config
-          mountPath: /app/app.py
-          subPath: app.py
         - name: artifacts-storage
           mountPath: /app/artifacts
         - name: mlflow-storage
@@ -74,9 +91,6 @@ spec:
           readOnlyRootFilesystem: false
           allowPrivilegeEscalation: false
       volumes:
-      - name: app-config
-        configMap:
-          name: app-config
       - name: artifacts-storage
         emptyDir: {}
       - name: mlflow-storage
