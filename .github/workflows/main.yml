@@ -9,6 +9,7 @@ on:
 env:
   PROJECT_ID: steady-triumph-447006-f8
   REGION: asia-south1
+  ZONE: asia-south1-a
   GAR_LOCATION: asia-south1-docker.pkg.dev
   SERVICE_NAME: iris-api
   IMAGE_NAME: iris-api
@@ -128,7 +129,7 @@ jobs:
     - name: Configure kubectl
       run: |
         gcloud container clusters get-credentials iris-api-cluster \
-          --zone=asia-south1-a \
+          --zone=${{ env.ZONE }} \
           --project=${{ env.PROJECT_ID }}
 
     - name: Deploy to development namespace
@@ -185,7 +186,7 @@ jobs:
     - name: Configure kubectl
       run: |
         gcloud container clusters get-credentials iris-api-cluster \
-          --zone=asia-south1-a \
+          --zone=${{ env.ZONE }} \
           --project=${{ env.PROJECT_ID }}
 
     - name: Deploy to production using Blue-Green
