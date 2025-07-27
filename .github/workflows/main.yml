@@ -219,10 +219,10 @@ jobs:
 
     - name: Validate Green Deployment
       run: |
-        # Test green deployment
-        kubectl port-forward -n iris-api service/iris-api-green 8080:80 &
+        # Test green deployment by port-forwarding to green pods
+        kubectl port-forward -n iris-api deployment/iris-api-green 8080:8000 &
         PF_PID=$!
-        sleep 10
+        sleep 15
         
         # Validate health
         curl -f http://localhost:8080/health || exit 1
@@ -249,7 +249,7 @@ jobs:
         # Verify production traffic
         kubectl port-forward -n iris-api service/iris-api-service 8080:80 &
         PF_PID=$!
-        sleep 10
+        sleep 15
         
         curl -f http://localhost:8080/health || exit 1
         
