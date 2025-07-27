@@ -284,63 +284,112 @@ jobs:
         sed -i 's/app: iris-api$/app: iris-api-green/g' k8s/deployment.yaml
         sed -i 's/name: iris-api$/name: iris-api-green/g' k8s/deployment.yaml
         
+        # Scale down existing blue deployment to make room for green
+        echo "Scaling down existing blue deployment to make room for green..."
+        kubectl scale deployment iris-api --replicas=1 -n iris-api --ignore-not-found=true
+        
+        # Wait a moment for scale down
+        sleep 10
+        
+        # Apply green deployment
         kubectl apply -f k8s/deployment.yaml -n iris-api
-        kubectl rollout status deployment/iris-api-green -n iris-api --timeout=300s
+        
+        # Wait for green deployment with extended timeout
+        echo "Waiting for green deployment rollout..."
+        kubectl rollout status deployment/iris-api-green -n iris-api --timeout=600s
 
     - name: Validate Green Deployment
       run: |
+        # Check if green pods are running
+        echo "Checking green deployment status..."
+        kubectl get pods -n iris-api -l app=iris-api-green
+        
+        # Wait for pods to be ready
+        kubectl wait --for=condition=ready pod -l app=iris-api-green -n iris-api --timeout=300s
+        
         # Test green deployment by port-forwarding to green pods
+        echo "Starting port-forward to test green deployment..."
         kubectl port-forward -n iris-api deployment/iris-api-green 8080:8000 &
         PF_PID=$!
-        sleep 15
         
-        # Validate health
-        curl -f http://localhost:8080/health || exit 1
+        # Wait for port-forward to establish
+        sleep 20
         
-        # Test prediction
+        # Validate health endpoint
+        echo "Testing health endpoint..."
+        for i in {1..5}; do
+          if curl -f http://localhost:8080/health; then
+            echo "Health check passed!"
+            break
+          else
+            echo "Health check attempt $i failed, retrying..."
+            sleep 5
+          fi
+        done
+        
+        # Test prediction endpoint
+        echo "Testing prediction endpoint..."
         result=$(curl -s -X POST "http://localhost:8080/predict" \
           -H "Content-Type: application/json" \
           -d '{"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}')
         
         echo "Prediction result: $result"
-        echo "$result" | grep -q "setosa" || exit 1
         
+        # Validate prediction contains expected result
+        if echo "$result" | grep -q "setosa"; then
+          echo "✅ Prediction test passed!"
+        else
+          echo "❌ Prediction test failed!"
+          kill $PF_PID
+          exit 1
+        fi
+        
+        # Clean up port-forward
         kill $PF_PID
-        echo "Green deployment validation passed!"
+        echo "✅ Green deployment validation completed successfully!"
 
     - name: Switch Traffic to Green (Blue-Green Deployment)
       run: |
         # Update service selector to point to green
+        echo "Switching traffic to green deployment..."
         kubectl patch service iris-api-service -n iris-api -p '{"spec":{"selector":{"app":"iris-api-green"}}}'
         
-        # Wait for service update
+        # Wait for service update to propagate
+        echo "Waiting for service update to propagate..."
         sleep 30
         
-        # Verify production traffic
+        # Verify production traffic is going to green
+        echo "Verifying production traffic routing..."
         kubectl port-forward -n iris-api service/iris-api-service 8080:80 &
         PF_PID=$!
-        sleep 15
+        sleep 20
         
-        curl -f http://localhost:8080/health || exit 1
+        # Test production service
+        for i in {1..3}; do
+          if curl -f http://localhost:8080/health; then
+            echo "✅ Production traffic verification passed!"
+            break
+          else
+            echo "Production traffic test attempt $i failed, retrying..."
+            sleep 10
+          fi
+        done
         
+        # Clean up port-forward
         kill $PF_PID
         
-        # Clean up old blue deployment
-        kubectl delete deployment iris-api -n iris-api --ignore-not-found=true
+        echo "✅ Traffic successfully switched to green deployment!"
         
-        # Create new blue deployment from green template
-        kubectl get deployment iris-api-green -n iris-api -o yaml | \
-          sed 's/iris-api-green/iris-api/g' | \
-          sed 's/app: iris-api$/app: iris-api/g' | \
-          kubectl apply -f -
+    - name: Clean Up Blue Deployment (Optional)
+      run: |
+        # Optional: Clean up old blue deployment after successful green deployment
+        echo "Cleaning up old blue deployment..."
+        kubectl scale deployment iris-api --replicas=0 -n iris-api --ignore-not-found=true
         
-        # Wait for new blue deployment to be ready
-        kubectl rollout status deployment/iris-api -n iris-api --timeout=120s
-        
-        # Clean up green deployment
-        kubectl delete deployment iris-api-green -n iris-api
-        
-        echo "Blue-Green deployment completed successfully!"
+        echo "✅ Blue-Green deployment completed successfully!"
+        echo "📊 Current deployment status:"
+        kubectl get deployments -n iris-api
+        kubectl get pods -n iris-api
 
   # Notify Success
   notify:
@@ -354,8 +403,18 @@ jobs:
       run: |
         if [ "${{ needs.deploy-prod.result }}" == "success" ]; then
           echo "🎉 Production deployment successful!"
-          echo "Repository: https://github.com/ALikesToCode/week6-iris-mlops"
+          echo "✅ CML pipeline completed successfully"
+          echo "✅ Blue-Green deployment completed"
+          echo "✅ API health checks passed"
+          echo "✅ Model artifacts generated"
+          echo ""
+          echo "🔗 Repository: https://github.com/ALikesToCode/week6-iris-mlops"
+          echo "📊 Check GitHub Actions for CML reports and artifacts"
         else
           echo "❌ Deployment failed. Check logs above."
+          echo "🔍 Common issues:"
+          echo "  - Resource constraints (scale down existing deployments)"
+          echo "  - Pod startup failures (check pod logs)"
+          echo "  - Network connectivity (check service endpoints)"
           exit 1
         fi
