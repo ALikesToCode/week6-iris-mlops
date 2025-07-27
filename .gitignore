@@ -1,0 +1,10 @@
+.env
+*.key
+*.json
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+.vscode/
+mlruns/
+artifacts/model.joblib

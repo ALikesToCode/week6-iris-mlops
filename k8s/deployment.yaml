@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-api
+  namespace: iris-api
+  labels:
+    app: iris-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: iris-api
+  template:
+    metadata:
+      labels:
+        app: iris-api
+        version: v1
+    spec:
+      initContainers:
+      - name: setup-permissions
+        image: busybox:1.35
+        command: ['sh', '-c', 'mkdir -p /app/artifacts /app/mlruns && chown -R 1000:1000 /app/artifacts /app/mlruns']
+        volumeMounts:
+        - name: artifacts-storage
+          mountPath: /app/artifacts
+        - name: mlflow-storage
+          mountPath: /app/mlruns
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: iris-api
+        image: gcr.io/steady-triumph-447006-f8/iris-api:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        volumeMounts:
+        - name: app-config
+          mountPath: /app/app.py
+          subPath: app.py
+        - name: artifacts-storage
+          mountPath: /app/artifacts
+        - name: mlflow-storage
+          mountPath: /app/mlruns
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+      volumes:
+      - name: app-config
+        configMap:
+          name: app-config
+      - name: artifacts-storage
+        emptyDir: {}
+      - name: mlflow-storage
+        emptyDir: {}

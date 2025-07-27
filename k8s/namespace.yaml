@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iris-api
+  labels:
+    name: iris-api
+    purpose: ml-model-serving
