@@ -218,12 +218,15 @@ jobs:
             if [ -z "$ISSUE_NUMBER" ]; then
               # Create a new issue for CML reports
               echo "Creating new CML report issue..."
-              ISSUE_NUMBER=$(gh issue create \
+              gh issue create \
                 --repo ALikesToCode/week6-iris-mlops \
                 --title "🤖 CML Model Performance Reports" \
                 --label "cml-report,automated" \
-                --body "This issue tracks automated CML model performance reports from CI/CD pipeline runs." \
-                --json number --jq '.number')
+                --body "This issue tracks automated CML model performance reports from CI/CD pipeline runs."
+              
+              # Get the issue number from the list after creation
+              ISSUE_NUMBER=$(gh issue list --repo ALikesToCode/week6-iris-mlops \
+                --label "cml-report" --state open --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
               echo "Created issue #$ISSUE_NUMBER for CML reports"
             else
               echo "Using existing CML report issue #$ISSUE_NUMBER"
