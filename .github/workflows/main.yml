@@ -338,12 +338,19 @@ jobs:
         SINGLE_TAG=$(echo "${IMAGE_TAG}" | head -n1)
         echo "Using image tag: $SINGLE_TAG"
         
+        # Create temporary directory for modified K8s files
+        mkdir -p k8s-dev
+        cp k8s/*.yaml k8s-dev/
+        
         # Update image in deployment
-        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${SINGLE_TAG}|g" k8s/deployment.yaml
+        sed -i "s|gcr.io/steady-triumph-447006-f8/iris-api:latest|${SINGLE_TAG}|g" k8s-dev/deployment.yaml
+        
+        # Update namespace in all K8s files for development
+        sed -i "s|namespace: iris-api|namespace: development|g" k8s-dev/*.yaml
         
         # Apply to development namespace
         kubectl create namespace development --dry-run=client -o yaml | kubectl apply -f -
-        kubectl apply -f k8s/ -n development
+        kubectl apply -f k8s-dev/ -n development
         
         # Wait for rollout
         kubectl rollout status deployment/iris-api -n development --timeout=300s
