@@ -7,10 +7,11 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
   actions: read
+  statuses: write
 
 env:
   PROJECT_ID: steady-triumph-447006-f8
@@ -198,29 +199,48 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             # Post as PR comment
             echo "Posting as PR comment..."
-            gh pr comment ${{ github.event.pull_request.number }} \
+            if gh pr comment ${{ github.event.pull_request.number }} \
               --body-file cml_comment.md \
-              --repo ALikesToCode/week6-iris-mlops && echo "✅ PR comment posted successfully" || echo "❌ PR comment failed"
-          else
-            # Post as commit comment - try multiple approaches
-            echo "Posting as commit comment..."
-            
-            # Method 1: Using gh api
-            if gh api repos/ALikesToCode/week6-iris-mlops/commits/${{ github.sha }}/comments \
-              --method POST \
-              --field body="$(cat cml_comment.md)" > comment_response.json 2>&1; then
-              echo "✅ Commit comment posted successfully"
-              cat comment_response.json
+              --repo ALikesToCode/week6-iris-mlops; then
+              echo "✅ PR comment posted successfully"
             else
-              echo "❌ Method 1 failed, trying method 2..."
-              # Method 2: Using gh api with --input
-              if echo '{"body": "'"$(cat cml_comment.md | sed 's/"/\\"/g' | tr '\n' ' ')"'"}' | \
-                gh api repos/ALikesToCode/week6-iris-mlops/commits/${{ github.sha }}/comments --input -; then
-                echo "✅ Commit comment posted with method 2"
+              echo "❌ PR comment failed"
+            fi
+          else
+            # Create an issue comment instead of commit comment for better permissions support
+            echo "Creating issue for CML report posting..."
+            
+            # Find or create an issue for CML reports
+            ISSUE_NUMBER=$(gh issue list --repo ALikesToCode/week6-iris-mlops \
+              --label "cml-report" --state open --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
+            
+            if [ -z "$ISSUE_NUMBER" ]; then
+              # Create a new issue for CML reports
+              echo "Creating new CML report issue..."
+              ISSUE_NUMBER=$(gh issue create \
+                --repo ALikesToCode/week6-iris-mlops \
+                --title "🤖 CML Model Performance Reports" \
+                --label "cml-report,automated" \
+                --body "This issue tracks automated CML model performance reports from CI/CD pipeline runs." \
+                --json number --jq '.number')
+              echo "Created issue #$ISSUE_NUMBER for CML reports"
+            else
+              echo "Using existing CML report issue #$ISSUE_NUMBER"
+            fi
+            
+            # Post the CML report as an issue comment
+            if [ -n "$ISSUE_NUMBER" ]; then
+              echo "Posting CML report to issue #$ISSUE_NUMBER..."
+              if gh issue comment $ISSUE_NUMBER \
+                --repo ALikesToCode/week6-iris-mlops \
+                --body-file cml_comment.md; then
+                echo "✅ CML report posted to issue #$ISSUE_NUMBER successfully!"
+                echo "🔗 View report: https://github.com/ALikesToCode/week6-iris-mlops/issues/$ISSUE_NUMBER"
               else
-                echo "❌ Both methods failed - comment not posted"
-                echo "Fallback: Comment content available in artifacts"
+                echo "❌ Failed to post CML report to issue"
               fi
+            else
+              echo "❌ Could not create or find CML report issue"
             fi
           fi
           
