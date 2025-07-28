@@ -7,7 +7,7 @@ metadata:
     app: iris-api
     version: v1
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: iris-api
@@ -108,18 +108,15 @@ spec:
       
       # MLflow tracking server sidecar
       - name: mlflow-server
-        image: python:3.10-slim
-        command: ["/bin/bash"]
+        image: ghcr.io/mlflow/mlflow:v2.8.1
+        command: ["mlflow"]
         args: 
-        - -c
-        - |
-          pip install mlflow==2.8.1 && \
-          mlflow server \
-            --host 0.0.0.0 \
-            --port 5000 \
-            --backend-store-uri sqlite:////app/mlruns/mlflow.db \
-            --default-artifact-root /app/mlruns \
-            --workers 1
+        - server
+        - --host=0.0.0.0
+        - --port=5000
+        - --backend-store-uri=sqlite:////app/mlruns/mlflow.db
+        - --default-artifact-root=/app/mlruns
+        - --workers=1
         ports:
         - name: mlflow-ui
           containerPort: 5000
@@ -140,23 +137,25 @@ spec:
           mountPath: /app/mlruns
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
-            memory: "256Mi"
-            cpu: "300m"
+            memory: "128Mi"
+            cpu: "200m"
         livenessProbe:
           httpGet:
             path: /
             port: 5000
-          initialDelaySeconds: 60
+          initialDelaySeconds: 90
           periodSeconds: 30
+          timeoutSeconds: 10
         readinessProbe:
           httpGet:
             path: /
             port: 5000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 15
+          timeoutSeconds: 5
       
       volumes:
       - name: artifacts-storage
