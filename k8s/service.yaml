@@ -12,5 +12,9 @@ spec:
     targetPort: 8000
     protocol: TCP
     name: http
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: mlflow
   selector:
     app: iris-api

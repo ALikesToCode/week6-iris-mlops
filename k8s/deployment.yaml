@@ -57,6 +57,21 @@ spec:
             configMapKeyRef:
               name: iris-api-config
               key: DATA_PATH
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MLFLOW_TRACKING_URI
+        - name: MLFLOW_BACKEND_STORE_URI
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MLFLOW_BACKEND_STORE_URI
+        - name: MLFLOW_ARTIFACT_ROOT
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MLFLOW_ARTIFACT_ROOT
         volumeMounts:
         - name: artifacts-storage
           mountPath: /app/artifacts
@@ -90,6 +105,59 @@ spec:
           runAsUser: 1000
           readOnlyRootFilesystem: false
           allowPrivilegeEscalation: false
+      
+      # MLflow tracking server sidecar
+      - name: mlflow-server
+        image: python:3.10-slim
+        command: ["/bin/bash"]
+        args: 
+        - -c
+        - |
+          pip install mlflow==2.8.1 && \
+          mlflow server \
+            --host 0.0.0.0 \
+            --port 5000 \
+            --backend-store-uri sqlite:////app/mlruns/mlflow.db \
+            --default-artifact-root /app/mlruns \
+            --workers 1
+        ports:
+        - name: mlflow-ui
+          containerPort: 5000
+          protocol: TCP
+        env:
+        - name: MLFLOW_BACKEND_STORE_URI
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MLFLOW_BACKEND_STORE_URI
+        - name: MLFLOW_ARTIFACT_ROOT
+          valueFrom:
+            configMapKeyRef:
+              name: iris-api-config
+              key: MLFLOW_ARTIFACT_ROOT
+        volumeMounts:
+        - name: mlflow-storage
+          mountPath: /app/mlruns
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+      
       volumes:
       - name: artifacts-storage
         emptyDir: {}
