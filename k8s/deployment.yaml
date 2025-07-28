@@ -7,6 +7,7 @@ metadata:
     app: iris-api
     version: v1
 spec:
+  # SCALABILITY: Start with 2 replicas but HPA will auto-scale from 3-20 based on load
   replicas: 2
   selector:
     matchLabels:
@@ -37,10 +38,12 @@ spec:
         env:
         - name: PORT
           value: "8000"
+        # SCALABILITY: Configure thread pool size for concurrent inference processing
         - name: MAX_WORKERS
-          value: "8"
+          value: "8"  # Enables concurrent model inference across 8 worker threads
+        # SCALABILITY: Large cache size for prediction reuse to reduce inference load
         - name: CACHE_SIZE
-          value: "2000"
+          value: "2000"  # Cache up to 2000 predictions to improve response times
         - name: API_VERSION
           valueFrom:
             configMapKeyRef:
@@ -81,13 +84,14 @@ spec:
           mountPath: /app/artifacts
         - name: mlflow-storage
           mountPath: /app/mlruns
+        # SCALABILITY: Enhanced resource allocation for concurrent processing
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "256Mi"  # Base memory for model loading and caching
+            cpu: "200m"      # Baseline CPU for steady-state operations
           limits:
-            memory: "1Gi"
-            cpu: "1000m"
+            memory: "1Gi"    # Allow up to 1GB for large batch processing
+            cpu: "1000m"     # Full CPU core for high-concurrency inference
         livenessProbe:
           httpGet:
             path: /health
