@@ -50,11 +50,11 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov flake8 black isort httpx
 
-    - name: Code formatting check (Black)
-      run: black --check --diff . || echo "Formatting issues found, run 'black .' to fix"
+    - name: Auto-format code (Black)
+      run: black .
 
-    - name: Import sorting check (isort)
-      run: isort --check-only --diff . || echo "Import sorting issues found, run 'isort .' to fix"
+    - name: Auto-sort imports (isort)
+      run: isort .
 
     - name: Linting (flake8)
       run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Linting issues found"

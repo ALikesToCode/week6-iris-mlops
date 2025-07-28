@@ -280,7 +280,7 @@ class CMLPipeline:
             
             logger.info("CML Pipeline completed successfully!")
             return True, metrics, report_path
-            
+
         except Exception as e:
             logger.error(f"CML Pipeline failed: {str(e)}")
             return False, None, None
@@ -289,7 +289,7 @@ def main():
     """Main function to run the CML pipeline"""
     pipeline = CMLPipeline()
     success, metrics, report_path = pipeline.run_pipeline()
-    
+
     if success:
         print(f"✅ CML Pipeline completed successfully!")
         print(f"📊 Model accuracy: {metrics['accuracy']:.4f}")
@@ -298,6 +298,7 @@ def main():
     else:
         print("❌ CML Pipeline failed!")
         return 1
+
 
 if __name__ == "__main__":
     exit(main())
