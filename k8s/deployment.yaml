@@ -106,57 +106,6 @@ spec:
           readOnlyRootFilesystem: false
           allowPrivilegeEscalation: false
       
-      # MLflow tracking server sidecar
-      - name: mlflow-server
-        image: ghcr.io/mlflow/mlflow:v2.8.1
-        command: ["mlflow"]
-        args: 
-        - server
-        - --host=0.0.0.0
-        - --port=5000
-        - --backend-store-uri=sqlite:////app/mlruns/mlflow.db
-        - --default-artifact-root=/app/mlruns
-        - --workers=1
-        ports:
-        - name: mlflow-ui
-          containerPort: 5000
-          protocol: TCP
-        env:
-        - name: MLFLOW_BACKEND_STORE_URI
-          valueFrom:
-            configMapKeyRef:
-              name: iris-api-config
-              key: MLFLOW_BACKEND_STORE_URI
-        - name: MLFLOW_ARTIFACT_ROOT
-          valueFrom:
-            configMapKeyRef:
-              name: iris-api-config
-              key: MLFLOW_ARTIFACT_ROOT
-        volumeMounts:
-        - name: mlflow-storage
-          mountPath: /app/mlruns
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "50m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 5000
-          initialDelaySeconds: 90
-          periodSeconds: 30
-          timeoutSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 5000
-          initialDelaySeconds: 60
-          periodSeconds: 15
-          timeoutSeconds: 5
-      
       volumes:
       - name: artifacts-storage
         emptyDir: {}

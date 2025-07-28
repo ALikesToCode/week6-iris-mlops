@@ -8,6 +8,6 @@ data:
   LOG_LEVEL: "INFO"
   MODEL_PATH: "/app/artifacts/model.joblib"
   DATA_PATH: "/app/data/iris.csv"
-  MLFLOW_TRACKING_URI: "http://localhost:5000"
-  MLFLOW_BACKEND_STORE_URI: "sqlite:////app/mlruns/mlflow.db"
+  MLFLOW_TRACKING_URI: "file:///app/mlruns"
+  MLFLOW_BACKEND_STORE_URI: "file:///app/mlruns"
   MLFLOW_ARTIFACT_ROOT: "/app/mlruns"
