@@ -187,23 +187,44 @@ jobs:
           
           # Post comment using GitHub CLI
           echo "Posting CML report as commit comment..."
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "Event name: ${{ github.event_name }}"
+          
+          # Debug: Show the comment content
+          echo "--- CML Comment Content ---"
+          cat cml_comment.md
+          echo "--- End Comment Content ---"
           
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             # Post as PR comment
             echo "Posting as PR comment..."
             gh pr comment ${{ github.event.pull_request.number }} \
-              --body "$(cat cml_comment.md)" \
-              --repo ALikesToCode/week6-iris-mlops || echo "PR comment failed"
+              --body-file cml_comment.md \
+              --repo ALikesToCode/week6-iris-mlops && echo "✅ PR comment posted successfully" || echo "❌ PR comment failed"
           else
-            # Post as commit comment
+            # Post as commit comment - try multiple approaches
             echo "Posting as commit comment..."
-            gh api repos/ALikesToCode/week6-iris-mlops/commits/${{ github.sha }}/comments \
+            
+            # Method 1: Using gh api
+            if gh api repos/ALikesToCode/week6-iris-mlops/commits/${{ github.sha }}/comments \
               --method POST \
-              --field body="$(cat cml_comment.md)" \
-              --jq '.html_url' || echo "Commit comment failed"
+              --field body="$(cat cml_comment.md)" > comment_response.json 2>&1; then
+              echo "✅ Commit comment posted successfully"
+              cat comment_response.json
+            else
+              echo "❌ Method 1 failed, trying method 2..."
+              # Method 2: Using gh api with --input
+              if echo '{"body": "'"$(cat cml_comment.md | sed 's/"/\\"/g' | tr '\n' ' ')"'"}' | \
+                gh api repos/ALikesToCode/week6-iris-mlops/commits/${{ github.sha }}/comments --input -; then
+                echo "✅ Commit comment posted with method 2"
+              else
+                echo "❌ Both methods failed - comment not posted"
+                echo "Fallback: Comment content available in artifacts"
+              fi
+            fi
           fi
           
-          echo "✅ CML comment report created and posted"
+          echo "✅ CML comment report processing completed"
         else
           echo "❌ CML report or metrics not found"
         fi
