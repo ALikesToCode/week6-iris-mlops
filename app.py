@@ -6,12 +6,15 @@ A FastAPI-based microservice for iris flower classification with MLflow integrat
 Author: Abhyudaya B Tharakan 22f3001492
 """
 
+import asyncio
 import logging
 import os
 import sys
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 import joblib
 import numpy as np
@@ -95,6 +98,19 @@ class IrisClassifier:
         self.classes = ['setosa', 'versicolor', 'virginica']
         self.mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
         self.tuning_jobs = {}  # Store background tuning jobs
+        
+        # Concurrency and performance improvements
+        self.model_lock = threading.RLock()  # Thread-safe model access
+        self.executor = ThreadPoolExecutor(max_workers=int(os.getenv("MAX_WORKERS", "4")))
+        self.prediction_cache = {}  # Simple prediction cache
+        self.cache_lock = threading.Lock()
+        self.max_cache_size = int(os.getenv("CACHE_SIZE", "1000"))
+        
+        # Performance metrics
+        self.request_count = 0
+        self.total_inference_time = 0.0
+        self.metrics_lock = threading.Lock()
+        
         self._setup_mlflow()
         self.load_model()
     
@@ -108,16 +124,17 @@ class IrisClassifier:
     
     def load_model(self):
         """Load the trained model from artifacts"""
-        try:
-            if Path(self.model_path).exists():
-                self.model = joblib.load(self.model_path)
-                logger.info(f"Model loaded successfully from {self.model_path}")
-            else:
-                logger.warning(f"Model file not found at {self.model_path}, training a simple model")
+        with self.model_lock:
+            try:
+                if Path(self.model_path).exists():
+                    self.model = joblib.load(self.model_path)
+                    logger.info(f"Model loaded successfully from {self.model_path}")
+                else:
+                    logger.warning(f"Model file not found at {self.model_path}, training a simple model")
+                    self.train_simple_model()
+            except Exception as e:
+                logger.error(f"Error loading model: {e}")
                 self.train_simple_model()
-        except Exception as e:
-            logger.error(f"Error loading model: {e}")
-            self.train_simple_model()
     
     def train_simple_model(self):
         """Train a simple model if none is available"""
@@ -148,12 +165,44 @@ class IrisClassifier:
             logger.error(f"Error training simple model: {e}")
             raise
     
-    def predict(self, features: IrisFeatures) -> PredictionResponse:
-        """Make prediction for given features"""
+    def _generate_cache_key(self, features: IrisFeatures) -> str:
+        """Generate a cache key for the features"""
+        return f"{features.sepal_length}_{features.sepal_width}_{features.petal_length}_{features.petal_width}"
+    
+    def _predict_sync(self, feature_array: np.ndarray) -> tuple:
+        """Synchronous prediction function for thread pool"""
+        start_time = time.time()
+        
+        with self.model_lock:
+            if self.model is None:
+                raise ValueError("Model not loaded")
+            
+            prediction = self.model.predict(feature_array)[0]
+            probabilities = self.model.predict_proba(feature_array)[0]
+        
+        inference_time = time.time() - start_time
+        
+        # Update metrics
+        with self.metrics_lock:
+            self.request_count += 1
+            self.total_inference_time += inference_time
+        
+        return prediction, probabilities, inference_time
+    
+    async def predict(self, features: IrisFeatures) -> PredictionResponse:
+        """Make prediction for given features with caching and async processing"""
         if self.model is None:
             raise HTTPException(status_code=500, detail="Model not loaded")
         
         try:
+            # Check cache first
+            cache_key = self._generate_cache_key(features)
+            
+            with self.cache_lock:
+                if cache_key in self.prediction_cache:
+                    logger.debug(f"Cache hit for prediction: {cache_key}")
+                    return self.prediction_cache[cache_key]
+            
             # Prepare features
             feature_array = np.array([[
                 features.sepal_length,
@@ -162,19 +211,34 @@ class IrisClassifier:
                 features.petal_width
             ]])
             
-            # Make prediction
-            prediction = self.model.predict(feature_array)[0]
-            probabilities = self.model.predict_proba(feature_array)[0]
+            # Make async prediction using thread pool
+            loop = asyncio.get_event_loop()
+            prediction, probabilities, inference_time = await loop.run_in_executor(
+                self.executor, self._predict_sync, feature_array
+            )
             
             # Format response
             prob_dict = {class_name: float(prob) for class_name, prob in zip(self.classes, probabilities)}
             confidence = float(max(probabilities))
             
-            return PredictionResponse(
+            response = PredictionResponse(
                 prediction=prediction,
                 confidence=confidence,
                 probabilities=prob_dict
             )
+            
+            # Cache the result
+            with self.cache_lock:
+                if len(self.prediction_cache) >= self.max_cache_size:
+                    # Remove oldest entry (simple FIFO)
+                    oldest_key = next(iter(self.prediction_cache))
+                    del self.prediction_cache[oldest_key]
+                
+                self.prediction_cache[cache_key] = response
+            
+            logger.debug(f"Prediction completed in {inference_time:.4f}s")
+            return response
+            
         except Exception as e:
             logger.error(f"Error making prediction: {e}")
             raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
@@ -255,6 +319,55 @@ class IrisClassifier:
     def get_tuning_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a tuning job."""
         return self.tuning_jobs.get(job_id)
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics for the classifier"""
+        with self.metrics_lock:
+            avg_inference_time = (
+                self.total_inference_time / self.request_count 
+                if self.request_count > 0 else 0
+            )
+            
+            cache_hit_ratio = len(self.prediction_cache) / max(self.request_count, 1)
+            
+            return {
+                "total_requests": self.request_count,
+                "total_inference_time": round(self.total_inference_time, 4),
+                "average_inference_time": round(avg_inference_time, 4),
+                "cache_size": len(self.prediction_cache),
+                "cache_hit_ratio": round(cache_hit_ratio, 4),
+                "max_workers": self.executor._max_workers,
+                "model_loaded": self.model is not None
+            }
+    
+    async def predict_batch_concurrent(self, features_list: List[IrisFeatures]) -> List[PredictionResponse]:
+        """Predict iris species for multiple samples concurrently"""
+        try:
+            # Create tasks for concurrent execution
+            tasks = [self.predict(features) for features in features_list]
+            
+            # Execute all predictions concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Handle any exceptions that occurred
+            processed_results = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"Error in batch prediction {i}: {result}")
+                    # Return a default error response
+                    processed_results.append(PredictionResponse(
+                        prediction="error",
+                        confidence=0.0,
+                        probabilities={"error": 1.0}
+                    ))
+                else:
+                    processed_results.append(result)
+            
+            return processed_results
+            
+        except Exception as e:
+            logger.error(f"Batch prediction error: {e}")
+            raise HTTPException(status_code=500, detail=f"Batch prediction error: {str(e)}")
 
 # Initialize classifier
 classifier = IrisClassifier()
@@ -278,23 +391,24 @@ async def health():
 async def predict(features: IrisFeatures):
     """Predict iris species from features"""
     try:
-        return classifier.predict(features)
+        return await classifier.predict(features)
     except Exception as e:
         logger.error(f"Prediction endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/batch", response_model=List[PredictionResponse])
 async def predict_batch(features_list: List[IrisFeatures]):
-    """Predict iris species for multiple samples"""
+    """Predict iris species for multiple samples concurrently"""
     try:
-        results = []
-        for features in features_list:
-            result = classifier.predict(features)
-            results.append(result)
-        return results
+        return await classifier.predict_batch_concurrent(features_list)
     except Exception as e:
         logger.error(f"Batch prediction endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/metrics")
+async def get_metrics():
+    """Get performance metrics"""
+    return classifier.get_performance_metrics()
 
 @app.post("/tune", response_model=TuningResponse)
 async def start_tuning(request: TuningRequest, background_tasks: BackgroundTasks):

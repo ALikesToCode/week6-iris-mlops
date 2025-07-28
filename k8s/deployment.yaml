@@ -30,13 +30,17 @@ spec:
           runAsUser: 0
       containers:
       - name: iris-api
-        image: gcr.io/steady-triumph-447006-f8/iris-api:latest
+        image: gcr.io/steady-triumph-447006-f8/iris-api:v2-concurrent
         ports:
         - containerPort: 8000
           name: http
         env:
         - name: PORT
           value: "8000"
+        - name: MAX_WORKERS
+          value: "8"
+        - name: CACHE_SIZE
+          value: "2000"
         - name: API_VERSION
           valueFrom:
             configMapKeyRef:
@@ -79,11 +83,11 @@ spec:
           mountPath: /app/mlruns
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "256Mi"
+            cpu: "200m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "1Gi"
+            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /health
