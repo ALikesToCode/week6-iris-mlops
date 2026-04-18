@@ -5,6 +5,7 @@ Test suite for Iris Classification API
 Author: Abhyudaya B Tharakan 22f3001492
 """
 
+import asyncio
 import pytest
 import sys
 import os
@@ -142,6 +143,6 @@ class TestIrisClassifier:
             petal_width=0.2
         )
         
-        result = classifier.predict(features)
+        result = asyncio.run(classifier.predict(features))
         assert len(result.probabilities) == 3  # Three classes
         assert sum(result.probabilities.values()) == pytest.approx(1.0, rel=1e-5)  # Probabilities sum to 1
